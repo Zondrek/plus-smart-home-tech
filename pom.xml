@@ -22,7 +22,7 @@
     </modules>
 
     <properties>
-        <java.version>21</java.version>
+        <java.version>17</java.version>
 
         <avro.version>1.11.3</avro.version>
         <kafka-clients.version>3.6.1</kafka-clients.version>
@@ -32,7 +32,7 @@
         <grpc.version>1.63.0</grpc.version>
 
         <!--       Plugins       -->
-        <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <avro-maven-plugin.version>${avro.version}</avro-maven-plugin.version>
         <protobuf-plugin.version>2.4.0</protobuf-plugin.version>
     </properties>
