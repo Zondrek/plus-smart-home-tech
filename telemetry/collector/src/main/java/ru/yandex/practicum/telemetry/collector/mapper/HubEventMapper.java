@@ -3,12 +3,13 @@ package ru.yandex.practicum.telemetry.collector.mapper;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.grpc.telemetry.event.*;
 import ru.yandex.practicum.kafka.telemetry.event.*;
+import ru.yandex.practicum.telemetry.collector.model.hub.*;
 
 import java.time.Instant;
 import java.util.stream.Collectors;
 
 /**
- * Маппер для преобразования gRPC proto-событий хабов в Avro-формат.
+ * Маппер для преобразования proto-событий и DTO хабов в Avro-формат.
  */
 @Component
 public class HubEventMapper {
@@ -45,7 +46,7 @@ public class HubEventMapper {
     private DeviceAddedEventAvro mapDeviceAdded(DeviceAddedEventProto proto) {
         return DeviceAddedEventAvro.newBuilder()
                 .setId(proto.getId())
-                .setDeviceType(mapDeviceType(proto.getType()))
+                .setType(mapDeviceType(proto.getType()))
                 .build();
     }
 
@@ -110,45 +111,19 @@ public class HubEventMapper {
         return builder.build();
     }
 
-    private DeviceTypeAvro mapDeviceType(DeviceTypeProto proto) {
-        switch (proto) {
-            case MOTION_SENSOR: return DeviceTypeAvro.MOTION_SENSOR;
-            case TEMPERATURE_SENSOR: return DeviceTypeAvro.TEMPERATURE_SENSOR;
-            case LIGHT_SENSOR: return DeviceTypeAvro.LIGHT_SENSOR;
-            case CLIMATE_SENSOR: return DeviceTypeAvro.CLIMATE_SENSOR;
-            case SWITCH_SENSOR: return DeviceTypeAvro.SWITCH_SENSOR;
-            default: throw new IllegalArgumentException("Unknown device type: " + proto);
-        }
+    private DeviceTypeAvro mapDeviceType(Object type) {
+        return DeviceTypeAvro.valueOf(type.toString());
     }
 
-    private ActionTypeAvro mapActionType(ActionTypeProto proto) {
-        switch (proto) {
-            case ACTIVATE: return ActionTypeAvro.ACTIVATE;
-            case DEACTIVATE: return ActionTypeAvro.DEACTIVATE;
-            case INVERSE: return ActionTypeAvro.INVERSE;
-            case SET_VALUE: return ActionTypeAvro.SET_VALUE;
-            default: throw new IllegalArgumentException("Unknown action type: " + proto);
-        }
+    private ActionTypeAvro mapActionType(Object type) {
+        return ActionTypeAvro.valueOf(type.toString());
     }
 
-    private ConditionTypeAvro mapConditionType(ConditionTypeProto proto) {
-        switch (proto) {
-            case MOTION: return ConditionTypeAvro.MOTION;
-            case LUMINOSITY: return ConditionTypeAvro.LUMINOSITY;
-            case SWITCH: return ConditionTypeAvro.SWITCH;
-            case TEMPERATURE: return ConditionTypeAvro.TEMPERATURE;
-            case CO2LEVEL: return ConditionTypeAvro.CO2LEVEL;
-            case HUMIDITY: return ConditionTypeAvro.HUMIDITY;
-            default: throw new IllegalArgumentException("Unknown condition type: " + proto);
-        }
+    private ConditionTypeAvro mapConditionType(Object type) {
+        return ConditionTypeAvro.valueOf(type.toString());
     }
 
-    private ConditionOperationAvro mapConditionOperation(ConditionOperationProto proto) {
-        switch (proto) {
-            case EQUALS: return ConditionOperationAvro.EQUALS;
-            case GREATER_THAN: return ConditionOperationAvro.GREATER_THAN;
-            case LOWER_THAN: return ConditionOperationAvro.LOWER_THAN;
-            default: throw new IllegalArgumentException("Unknown condition operation: " + proto);
-        }
+    private ConditionOperationAvro mapConditionOperation(Object operation) {
+        return ConditionOperationAvro.valueOf(operation.toString());
     }
 }

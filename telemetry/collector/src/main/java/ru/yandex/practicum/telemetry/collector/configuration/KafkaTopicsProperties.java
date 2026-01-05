@@ -9,16 +9,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @Getter
 @Setter
-@ConfigurationProperties(prefix = "kafka.topic")
+@ConfigurationProperties(prefix = "collector.kafka.topics")
 public class KafkaTopicsProperties {
 
     /**
      * Топик для событий датчиков.
      */
-    private String sensors;
+    private String sensorsEvents;
 
     /**
      * Топик для событий хабов.
      */
-    private String hubs;
+    private String hubsEvents;
 }

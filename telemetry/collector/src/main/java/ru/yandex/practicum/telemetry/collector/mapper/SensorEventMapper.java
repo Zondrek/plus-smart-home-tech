@@ -3,6 +3,7 @@ package ru.yandex.practicum.telemetry.collector.mapper;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.grpc.telemetry.event.*;
 import ru.yandex.practicum.kafka.telemetry.event.*;
+import ru.yandex.practicum.telemetry.collector.model.sensor.*;
 
 import java.time.Instant;
 
