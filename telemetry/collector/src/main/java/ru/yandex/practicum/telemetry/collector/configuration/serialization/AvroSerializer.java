@@ -7,9 +7,6 @@ import org.apache.kafka.common.serialization.Serializer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
-/**
- * Универсальный сериализатор для Avro-сообщений.
- */
 public class AvroSerializer<T extends SpecificRecordBase> implements Serializer<T> {
 
     @Override
