@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.client.inject.GrpcClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.grpc.telemetry.event.*;
 import ru.yandex.practicum.grpc.telemetry.hubrouter.HubRouterControllerGrpc.HubRouterControllerBlockingStub;
 import ru.yandex.practicum.kafka.telemetry.event.*;
@@ -30,6 +31,7 @@ public class ScenarioAnalyzerService {
     /**
      * Анализирует снапшот и выполняет подходящие сценарии.
      */
+    @Transactional(readOnly = true)
     public void analyzeSnapshot(SensorsSnapshotAvro snapshot) {
         String hubId = snapshot.getHubId();
         log.debug("Analyzing snapshot for hub: {}", hubId);
@@ -110,13 +112,22 @@ public class ScenarioAnalyzerService {
      * Извлекает значение датчика в зависимости от типа условия.
      */
     private Object extractSensorValue(ConditionType type, SensorStateAvro state) {
+        Object data = state.getData();
+
         return switch (type) {
-            case MOTION -> state.getData() instanceof MotionSensorAvro motion ? motion.getMotion() : null;
-            case LUMINOSITY -> state.getData() instanceof LightSensorAvro light ? light.getLuminosity() : null;
-            case SWITCH -> state.getData() instanceof SwitchSensorAvro switchSensor ? switchSensor.getState() : null;
-            case TEMPERATURE -> state.getData() instanceof TemperatureSensorAvro temp ? temp.getTemperatureC() : null;
-            case CO2LEVEL -> state.getData() instanceof ClimateSensorAvro climate ? climate.getCo2Level() : null;
-            case HUMIDITY -> state.getData() instanceof ClimateSensorAvro climate ? climate.getHumidity() : null;
+            case MOTION -> data instanceof MotionSensorAvro motion ? motion.getMotion() : null;
+            case LUMINOSITY -> data instanceof LightSensorAvro light ? light.getLuminosity() : null;
+            case SWITCH -> data instanceof SwitchSensorAvro switchSensor ? switchSensor.getState() : null;
+            case TEMPERATURE -> {
+                if (data instanceof TemperatureSensorAvro temp) {
+                    yield temp.getTemperatureC();
+                } else if (data instanceof ClimateSensorAvro climate) {
+                    yield climate.getTemperatureC();
+                }
+                yield null;
+            }
+            case CO2LEVEL -> data instanceof ClimateSensorAvro climate ? climate.getCo2Level() : null;
+            case HUMIDITY -> data instanceof ClimateSensorAvro climate ? climate.getHumidity() : null;
         };
     }
 
