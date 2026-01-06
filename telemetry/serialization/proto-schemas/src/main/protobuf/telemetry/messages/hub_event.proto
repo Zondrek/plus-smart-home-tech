@@ -82,6 +82,14 @@ message ScenarioRemovedEventProto {
   string name = 1;
 }
 
+// Запрос на выполнение действия устройством
+message DeviceActionRequest {
+  string hub_id = 1;
+  string scenario_name = 2;
+  DeviceActionProto action = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
 // Событие от хаба
 message HubEventProto {
   string hub_id = 1;
