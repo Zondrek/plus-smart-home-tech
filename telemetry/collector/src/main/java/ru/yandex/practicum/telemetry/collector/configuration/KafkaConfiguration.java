@@ -11,7 +11,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
-import ru.yandex.practicum.telemetry.collector.configuration.serialization.AvroSerializer;
+import ru.yandex.practicum.kafka.telemetry.serialization.AvroSerializer;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.KafkaTemplate;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
-import ru.yandex.practicum.telemetry.aggregator.configuration.serialization.AvroSerializer;
+import ru.yandex.practicum.kafka.telemetry.serialization.AvroSerializer;
 import ru.yandex.practicum.telemetry.aggregator.configuration.serialization.SensorEventDeserializer;
 
 import java.util.Properties;
