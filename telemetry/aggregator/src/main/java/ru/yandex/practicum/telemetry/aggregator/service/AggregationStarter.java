@@ -63,6 +63,9 @@ public class AggregationStarter {
 
                     // Если снапшот был обновлен, отправляем его в Kafka
                     updatedSnapshot.ifPresent(snapshot -> {
+                        log.info("Sending snapshot for hub {} to Kafka topic {}",
+                                snapshot.getHubId(), topicsProperties.getSnapshots());
+
                         ProducerRecord<String, SensorsSnapshotAvro> snapshotRecord =
                                 new ProducerRecord<>(
                                         topicsProperties.getSnapshots(),
@@ -74,7 +77,7 @@ public class AggregationStarter {
                             if (exception != null) {
                                 log.error("Error sending snapshot to Kafka", exception);
                             } else {
-                                log.debug("Snapshot sent to topic {}, partition {}, offset {}",
+                                log.info("Snapshot sent to topic {}, partition {}, offset {}",
                                         metadata.topic(), metadata.partition(), metadata.offset());
                             }
                         });

@@ -48,14 +48,16 @@ public class SnapshotAggregator {
 
         if (oldState != null) {
             // Проверяем, не устарело ли полученное событие
-            if (oldState.getTimestamp().compareTo(event.getTimestamp()) >= 0) {
-                log.debug("Event for sensor {} is older than current state, ignoring", event.getId());
+            if (oldState.getTimestamp().compareTo(event.getTimestamp()) > 0) {
+                log.info("Event for sensor {} is older than current state, ignoring. Old TS: {}, New TS: {}",
+                        event.getId(), oldState.getTimestamp(), event.getTimestamp());
                 return Optional.empty();
             }
 
             // Проверяем, изменились ли данные
             if (oldState.getData().equals(event.getPayload())) {
-                log.debug("Event for sensor {} has same data as current state, ignoring", event.getId());
+                log.info("Event for sensor {} has same data as current state, ignoring. Old: {}, New: {}",
+                        event.getId(), oldState.getData(), event.getPayload());
                 return Optional.empty();
             }
         }
@@ -66,11 +68,20 @@ public class SnapshotAggregator {
                 .setData(event.getPayload())
                 .build();
 
-        // Обновляем снапшот
+        // Обновляем состояние в map
         sensorsState.put(event.getId(), newState);
-        snapshot.setTimestamp(event.getTimestamp());
+
+        // Создаем НОВЫЙ снапшот с обновленным timestamp через builder
+        SensorsSnapshotAvro updatedSnapshot = SensorsSnapshotAvro.newBuilder()
+                .setHubId(event.getHubId())
+                .setTimestamp(event.getTimestamp())
+                .setSensorsState(sensorsState)
+                .build();
+
+        // Сохраняем обновленный снапшот в map
+        snapshots.put(event.getHubId(), updatedSnapshot);
 
         log.info("Updated snapshot for hub {}, sensor {}", event.getHubId(), event.getId());
-        return Optional.of(snapshot);
+        return Optional.of(updatedSnapshot);
     }
 }
