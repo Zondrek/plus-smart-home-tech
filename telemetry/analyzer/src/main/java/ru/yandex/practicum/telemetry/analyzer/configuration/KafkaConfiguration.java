@@ -1,66 +1,39 @@
 package ru.yandex.practicum.telemetry.analyzer.configuration;
 
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import ru.yandex.practicum.telemetry.analyzer.configuration.serialization.HubEventDeserializer;
-import ru.yandex.practicum.telemetry.analyzer.configuration.serialization.SnapshotDeserializer;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import ru.yandex.practicum.kafka.telemetry.configuration.KafkaListenerFactoryBuilder;
+import ru.yandex.practicum.kafka.telemetry.deserializer.HubEventDeserializer;
+import ru.yandex.practicum.kafka.telemetry.deserializer.SnapshotDeserializer;
 import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 
-import java.util.Properties;
-
 /**
  * Конфигурация Kafka для сервиса Analyzer.
+ * Создает два listener factory с разными deserializer'ами.
  */
 @Configuration
 @EnableConfigurationProperties(KafkaTopicsProperties.class)
 public class KafkaConfiguration {
 
-    @Value("${spring.kafka.bootstrap-servers}")
-    private String bootstrapServers;
+    private static final String OFFSET_RESET_LATEST = "latest";
 
-    /**
-     * Создает консьюмер для чтения событий хабов из Kafka.
-     *
-     * @return экземпляр Consumer для HubEventAvro
-     */
     @Bean
-    public Consumer<String, HubEventAvro> hubEventConsumer() {
-        Properties props = new Properties();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "analyzer-hub-events-group");
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-                "org.apache.kafka.common.serialization.StringDeserializer");
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-                HubEventDeserializer.class.getName());
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-
-        return new KafkaConsumer<>(props);
+    public ConcurrentKafkaListenerContainerFactory<String, HubEventAvro> hubEventListenerFactory(
+            KafkaProperties kafkaProperties) {
+        return KafkaListenerFactoryBuilder.create(kafkaProperties, HubEventDeserializer.class);
     }
 
-    /**
-     * Создает консьюмер для чтения снапшотов из Kafka.
-     *
-     * @return экземпляр Consumer для SensorsSnapshotAvro
-     */
     @Bean
-    public Consumer<String, SensorsSnapshotAvro> snapshotConsumer() {
-        Properties props = new Properties();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "analyzer-snapshots-group");
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-                "org.apache.kafka.common.serialization.StringDeserializer");
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-                SnapshotDeserializer.class.getName());
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-
-        return new KafkaConsumer<>(props);
+    public ConcurrentKafkaListenerContainerFactory<String, SensorsSnapshotAvro> snapshotListenerFactory(
+            KafkaProperties kafkaProperties) {
+        return KafkaListenerFactoryBuilder.create(
+                kafkaProperties,
+                SnapshotDeserializer.class,
+                OFFSET_RESET_LATEST
+        );
     }
 }

@@ -8,8 +8,9 @@ import ru.yandex.practicum.kafka.telemetry.event.*;
 import ru.yandex.practicum.telemetry.analyzer.model.*;
 import ru.yandex.practicum.telemetry.analyzer.repository.*;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Сервис для обработки событий от хабов.
@@ -68,20 +69,49 @@ public class HubEventService {
     private void handleScenarioAdded(String hubId, ScenarioAddedEventAvro event) {
         String scenarioName = event.getName();
 
-        // Проверяем, существует ли сценарий
-        Scenario scenario = scenarioRepository.findByHubIdAndName(hubId, scenarioName)
-                .orElse(new Scenario());
+        // Удаляем старый сценарий
+        scenarioRepository.findByHubIdAndName(hubId, scenarioName).ifPresent(scenarioRepository::delete);
 
+        // Создаем новый сценарий
+        Scenario scenario = new Scenario();
         scenario.setHubId(hubId);
         scenario.setName(scenarioName);
         scenario.setConditions(new ArrayList<>());
         scenario.setActions(new ArrayList<>());
 
-        // Сохраняем сценарий, чтобы получить ID
+        // Сохраняем сценарий, чтобы получить ID для composite keys
         scenario = scenarioRepository.save(scenario);
 
-        // Обрабатываем условия
-        for (ScenarioConditionAvro conditionAvro : event.getConditions()) {
+        // Загружаем и валидируем датчики
+        Map<String, Sensor> sensorsMap = loadAndValidateSensors(hubId, scenarioName, event);
+
+        // Обрабатываем условия и действия
+        processConditions(scenario, event.getConditions(), sensorsMap);
+        processActions(scenario, event.getActions(), sensorsMap);
+
+        // Сохраняем сценарий с заполненными связями
+        scenarioRepository.save(scenario);
+
+        log.info("Added/Updated scenario: {} for hub: {}", scenarioName, hubId);
+    }
+
+    private void handleScenarioRemoved(String hubId, ScenarioRemovedEventAvro event) {
+        String scenarioName = event.getName();
+
+        scenarioRepository.findByHubIdAndName(hubId, scenarioName).ifPresent(scenario -> {
+            scenarioRepository.delete(scenario);
+            log.info("Removed scenario: {} from hub: {}", scenarioName, hubId);
+        });
+    }
+
+    private void processConditions(Scenario scenario, List<ScenarioConditionAvro> conditionAvros, Map<String, Sensor> sensorsMap) {
+        if (conditionAvros.isEmpty()) {
+            return;
+        }
+
+        // Подготавливаем условия для сохранения
+        List<Condition> conditions = new ArrayList<>();
+        for (ScenarioConditionAvro conditionAvro : conditionAvros) {
             Condition condition = new Condition();
             condition.setType(ConditionType.valueOf(conditionAvro.getType().name()));
             condition.setOperation(ConditionOperation.valueOf(conditionAvro.getOperation().name()));
@@ -94,62 +124,100 @@ public class HubEventService {
                 condition.setValue(boolValue ? 1 : 0);
             }
 
-            condition = conditionRepository.save(condition);
+            conditions.add(condition);
+        }
+
+        // Сохраняем все условия одним запросом
+        List<Condition> savedConditions = conditionRepository.saveAll(conditions);
+
+        // Создаем связи между сценарием и условиями
+        for (int i = 0; i < conditionAvros.size(); i++) {
+            ScenarioConditionAvro conditionAvro = conditionAvros.get(i);
+            Condition savedCondition = savedConditions.get(i);
 
             ScenarioConditionId id = new ScenarioConditionId(
                     scenario.getId(),
                     conditionAvro.getSensorId(),
-                    condition.getId()
+                    savedCondition.getId()
             );
 
-            Sensor sensor = sensorRepository.findById(conditionAvro.getSensorId())
-                    .orElseThrow(() -> new IllegalStateException("Sensor not found: " + conditionAvro.getSensorId()));
+            Sensor sensor = sensorsMap.get(conditionAvro.getSensorId());
 
             ScenarioCondition scenarioCondition = new ScenarioCondition();
             scenarioCondition.setId(id);
             scenarioCondition.setScenario(scenario);
             scenarioCondition.setSensor(sensor);
-            scenarioCondition.setCondition(condition);
+            scenarioCondition.setCondition(savedCondition);
 
             scenario.getConditions().add(scenarioCondition);
         }
+    }
 
-        // Обрабатываем действия
-        for (DeviceActionAvro actionAvro : event.getActions()) {
+    private void processActions(Scenario scenario, List<DeviceActionAvro> actionAvros, Map<String, Sensor> sensorsMap) {
+        if (actionAvros.isEmpty()) {
+            return;
+        }
+
+        // Подготавливаем действия для сохранения
+        List<Action> actions = new ArrayList<>();
+        for (DeviceActionAvro actionAvro : actionAvros) {
             Action action = new Action();
             action.setType(ActionType.valueOf(actionAvro.getType().name()));
             action.setValue(actionAvro.getValue());
+            actions.add(action);
+        }
 
-            action = actionRepository.save(action);
+        // Сохраняем все действия одним запросом
+        List<Action> savedActions = actionRepository.saveAll(actions);
+
+        // Создаем связи между сценарием и действиями
+        for (int i = 0; i < actionAvros.size(); i++) {
+            DeviceActionAvro actionAvro = actionAvros.get(i);
+            Action savedAction = savedActions.get(i);
 
             ScenarioActionId id = new ScenarioActionId(
                     scenario.getId(),
                     actionAvro.getSensorId(),
-                    action.getId()
+                    savedAction.getId()
             );
 
-            Sensor sensor = sensorRepository.findById(actionAvro.getSensorId())
-                    .orElseThrow(() -> new IllegalStateException("Sensor not found: " + actionAvro.getSensorId()));
+            Sensor sensor = sensorsMap.get(actionAvro.getSensorId());
 
             ScenarioAction scenarioAction = new ScenarioAction();
             scenarioAction.setId(id);
             scenarioAction.setScenario(scenario);
             scenarioAction.setSensor(sensor);
-            scenarioAction.setAction(action);
+            scenarioAction.setAction(savedAction);
 
             scenario.getActions().add(scenarioAction);
         }
-
-        scenarioRepository.save(scenario);
-        log.info("Added/Updated scenario: {} for hub: {}", scenarioName, hubId);
     }
 
-    private void handleScenarioRemoved(String hubId, ScenarioRemovedEventAvro event) {
-        String scenarioName = event.getName();
+    private Map<String, Sensor> loadAndValidateSensors(String hubId, String scenarioName, ScenarioAddedEventAvro event) {
+        // Собираем все ID датчиков из условий и действий
+        Set<String> allSensorIds = new HashSet<>();
+        event.getConditions().forEach(c -> allSensorIds.add(c.getSensorId()));
+        event.getActions().forEach(a -> allSensorIds.add(a.getSensorId()));
 
-        scenarioRepository.findByHubIdAndName(hubId, scenarioName).ifPresent(scenario -> {
-            scenarioRepository.delete(scenario);
-            log.info("Removed scenario: {} from hub: {}", scenarioName, hubId);
-        });
+        if (allSensorIds.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        // Получаем все датчики одним запросом
+        Map<String, Sensor> sensorsMap = sensorRepository.findAllById(allSensorIds).stream()
+                .collect(Collectors.toMap(Sensor::getId, Function.identity()));
+
+        // Проверяем, что все датчики найдены
+        for (String sensorId : allSensorIds) {
+            if (!sensorsMap.containsKey(sensorId)) {
+                log.error("Cannot add/update scenario '{}' for hub '{}': sensor '{}' not found. " +
+                                "Required sensors: {}, Found sensors: {}",
+                        scenarioName, hubId, sensorId, allSensorIds, sensorsMap.keySet());
+                throw new IllegalStateException("Sensor not found: " + sensorId +
+                        ". Ensure all sensors are added before creating scenario.");
+            }
+        }
+
+        return sensorsMap;
     }
 }

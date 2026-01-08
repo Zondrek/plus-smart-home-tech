@@ -49,9 +49,13 @@ public class ScenarioAnalyzerService {
 
         // Проверяем каждый сценарий
         for (Scenario scenario : scenarios) {
-            if (checkScenarioConditions(scenario, sensorStates)) {
-                log.info("Scenario {} triggered for hub {}", scenario.getName(), hubId);
-                executeScenarioActions(scenario, snapshot);
+            try {
+                if (checkScenarioConditions(scenario, sensorStates)) {
+                    log.info("Scenario {} triggered for hub {}", scenario.getName(), hubId);
+                    executeScenarioActions(scenario, snapshot);
+                }
+            } catch (Exception e) {
+                log.error("Error processing scenario {} for hub {}", scenario.getName(), hubId, e);
             }
         }
     }
@@ -156,9 +160,9 @@ public class ScenarioAnalyzerService {
                                 .build())
                         .build();
 
-                hubRouterClient.handleDeviceAction(request);
-                log.info("Executed action {} on sensor {} for scenario {}",
-                        action.getType(), sensorId, scenario.getName());
+                var response = hubRouterClient.handleDeviceAction(request);
+                log.info("Executed action {} on sensor {} for scenario {}: {}",
+                        action.getType(), sensorId, scenario.getName(), response);
             } catch (Exception e) {
                 log.error("Error executing action for scenario {}", scenario.getName(), e);
             }

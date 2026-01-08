@@ -2,69 +2,39 @@ package ru.yandex.practicum.telemetry.analyzer.processor;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
-import ru.yandex.practicum.telemetry.analyzer.configuration.KafkaTopicsProperties;
 import ru.yandex.practicum.telemetry.analyzer.service.HubEventService;
 
-import java.time.Duration;
-import java.util.Collections;
+import java.util.List;
 
 /**
- * Процессор для обработки событий хабов из Kafka.
- * Работает в отдельном потоке и читает события из топика telemetry.hubs.v1.
+ * Процессор для обработки событий хабов из Kafka..
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class HubEventProcessor implements Runnable {
+public class HubEventProcessor {
 
-    private final Consumer<String, HubEventAvro> hubEventConsumer;
     private final HubEventService hubEventService;
-    private final KafkaTopicsProperties topicsProperties;
 
-    private volatile boolean running = true;
-
-    @Override
-    public void run() {
-        try {
-            // Подписываемся на топик
-            hubEventConsumer.subscribe(Collections.singletonList(topicsProperties.getHubs()));
-            log.info("HubEventProcessor subscribed to topic: {}", topicsProperties.getHubs());
-
-            // Цикл опроса
-            while (running) {
-                try {
-                    ConsumerRecords<String, HubEventAvro> records =
-                            hubEventConsumer.poll(Duration.ofSeconds(1));
-
-                    if (!records.isEmpty()) {
-                        log.debug("Received {} hub events", records.count());
-
-                        records.forEach(record -> {
-                            try {
-                                hubEventService.handleHubEvent(record.value());
-                            } catch (Exception e) {
-                                log.error("Error processing hub event", e);
-                            }
-                        });
-
-                        // Фиксируем смещения после успешной обработки
-                        hubEventConsumer.commitSync();
-                    }
-                } catch (Exception e) {
-                    log.error("Error in hub event processing loop", e);
-                }
-            }
-        } finally {
-            log.info("HubEventProcessor shutting down");
-            hubEventConsumer.close();
+    @KafkaListener(
+            topics = "${kafka.topic.hubs}",
+            groupId = "analyzer-hub-events-group",
+            containerFactory = "hubEventListenerFactory"
+    )
+    public void handleHubEvents(List<HubEventAvro> events, Acknowledgment acknowledgment) {
+        if (events.isEmpty()) {
+            return;
         }
-    }
 
-    public void stop() {
-        running = false;
+        log.debug("Received {} hub events", events.size());
+
+        for (HubEventAvro event : events) {
+            hubEventService.handleHubEvent(event);
+            acknowledgment.acknowledge();
+        }
     }
 }
