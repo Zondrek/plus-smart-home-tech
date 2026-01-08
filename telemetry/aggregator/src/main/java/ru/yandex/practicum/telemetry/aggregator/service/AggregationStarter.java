@@ -2,18 +2,16 @@ package ru.yandex.practicum.telemetry.aggregator.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.producer.Producer;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.errors.WakeupException;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.kafka.telemetry.event.SensorEventAvro;
 import ru.yandex.practicum.kafka.telemetry.event.SensorsSnapshotAvro;
 import ru.yandex.practicum.telemetry.aggregator.configuration.KafkaTopicsProperties;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,95 +23,53 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class AggregationStarter {
 
-    private final Consumer<String, SensorEventAvro> consumer;
-    private final Producer<String, SensorsSnapshotAvro> producer;
     private final SnapshotAggregator snapshotAggregator;
     private final KafkaTopicsProperties topicsProperties;
+    private final KafkaTemplate<String, SensorsSnapshotAvro> snapshotKafkaTemplate;
+    
+    @KafkaListener(
+            topics = "${kafka.topic.sensors}",
+            containerFactory = "sensorEventListenerFactory"
+    )
+    public void handleSensorEvents(
+            @Payload List<ConsumerRecord<String, SensorEventAvro>> records,
+            Acknowledgment acknowledgment
+    ) {
+        if (records.isEmpty()) {
+            return;
+        }
 
-    /**
-     * Метод для начала процесса агрегации данных.
-     * Подписывается на топики для получения событий от датчиков,
-     * формирует снимок их состояния и записывает в Kafka.
-     */
-    public void start() {
-        Runtime.getRuntime().addShutdownHook(new Thread(consumer::wakeup));
+        log.info("Received {} events from Kafka", records.size());
 
-        try {
-            // Подписываемся на топик с событиями датчиков
-            consumer.subscribe(List.of(topicsProperties.getSensors()));
-            log.info("Subscribed to topic: {}", topicsProperties.getSensors());
+        // Обрабатываем каждое событие
+        for (ConsumerRecord<String, SensorEventAvro> record : records) {
+            SensorEventAvro event = record.value();
 
-            // Цикл обработки событий
-            while (true) {
-                // Получаем события из Kafka
-                ConsumerRecords<String, SensorEventAvro> records = consumer.poll(Duration.ofMillis(1000));
+            // Обновляем состояние снапшота
+            Optional<SensorsSnapshotAvro> updatedSnapshot = snapshotAggregator.updateState(event);
 
-                if (records.isEmpty()) {
-                    continue;
+            // Если снапшот был обновлен, отправляем его в Kafka
+            if (updatedSnapshot.isPresent()) {
+                SensorsSnapshotAvro snapshot = updatedSnapshot.get();
+                log.info("Sending snapshot for hub {} to Kafka topic {}",
+                        snapshot.getHubId(), topicsProperties.getSnapshots());
+
+                try {
+                    snapshotKafkaTemplate.send(
+                            topicsProperties.getSnapshots(),
+                            null,
+                            snapshot.getTimestamp().toEpochMilli(),
+                            snapshot.getHubId(),
+                            snapshot
+                    ).get(); // Ждем подтверждения отправки
+                } catch (Exception e) {
+                    log.error("Error sending snapshot to Kafka", e);
+                    throw new RuntimeException("Failed to send snapshot", e);
                 }
-
-                log.info("Received {} events from Kafka", records.count());
-
-                // Обрабатываем каждое событие
-                for (ConsumerRecord<String, SensorEventAvro> record : records) {
-                    SensorEventAvro event = record.value();
-
-                    // Обновляем состояние снапшота
-                    Optional<SensorsSnapshotAvro> updatedSnapshot = snapshotAggregator.updateState(event);
-
-                    // Если снапшот был обновлен, отправляем его в Kafka
-                    updatedSnapshot.ifPresent(snapshot -> {
-                        log.info("Sending snapshot for hub {} to Kafka topic {}",
-                                snapshot.getHubId(), topicsProperties.getSnapshots());
-
-                        ProducerRecord<String, SensorsSnapshotAvro> snapshotRecord =
-                                new ProducerRecord<>(
-                                        topicsProperties.getSnapshots(),
-                                        snapshot.getHubId(),
-                                        snapshot
-                                );
-
-                        producer.send(snapshotRecord, (metadata, exception) -> {
-                            if (exception != null) {
-                                log.error("Error sending snapshot to Kafka", exception);
-                            } else {
-                                log.info("Snapshot sent to topic {}, partition {}, offset {}",
-                                        metadata.topic(), metadata.partition(), metadata.offset());
-                            }
-                        });
-                    });
-                }
-
-                // Фиксируем смещения после успешной обработки пакета событий
-                consumer.commitSync();
-                log.debug("Committed offsets for {} records", records.count());
             }
 
-        } catch (WakeupException ignored) {
-            // Игнорируем - закрываем консьюмер и продюсер в блоке finally
-            log.info("Wakeup exception received, shutting down");
-        } catch (Exception e) {
-            log.error("Ошибка во время обработки событий от датчиков", e);
-        } finally {
-            try {
-                // Перед тем, как закрыть продюсер и консьюмер, нужно убедиться,
-                // что все сообщения, лежащие в буфере, отправлены и
-                // все оффсеты обработанных сообщений зафиксированы
-
-                // Сбрасываем данные из буфера продюсера
-                log.info("Flushing producer buffer");
-                producer.flush();
-
-                // Фиксируем смещения в консьюмере
-                log.info("Committing final offsets");
-                consumer.commitSync();
-
-            } finally {
-                log.info("Закрываем консьюмер");
-                consumer.close();
-                log.info("Закрываем продюсер");
-                producer.close();
-            }
+            // Коммитим офсет после успешной обработки каждого события
+            acknowledgment.acknowledge();
         }
     }
 }
