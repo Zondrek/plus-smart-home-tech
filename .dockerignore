@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+*.iml
+.vscode
+.DS_Store
+
+# Build artifacts
+target/
+*.jar
+*.war
+*.ear
+*.class
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Logs
+*.log
+
+# Docker
+docker-compose*.yaml
+Dockerfile
+.dockerignore
+
+# Hub Router
+hub-router/
+
+# Infrastructure
+infra/
+commerce/
+
+# Tests
+**/src/test/

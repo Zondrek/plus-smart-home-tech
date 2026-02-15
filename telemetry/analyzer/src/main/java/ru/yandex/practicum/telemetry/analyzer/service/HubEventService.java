@@ -69,30 +69,49 @@ public class HubEventService {
     private void handleScenarioAdded(String hubId, ScenarioAddedEventAvro event) {
         String scenarioName = event.getName();
 
-        // Удаляем старый сценарий
-        scenarioRepository.findByHubIdAndName(hubId, scenarioName).ifPresent(scenarioRepository::delete);
-
-        // Создаем новый сценарий
-        Scenario scenario = new Scenario();
-        scenario.setHubId(hubId);
-        scenario.setName(scenarioName);
-        scenario.setConditions(new ArrayList<>());
-        scenario.setActions(new ArrayList<>());
-
-        // Сохраняем сценарий, чтобы получить ID для composite keys
-        scenario = scenarioRepository.save(scenario);
+        // Проверяем, существует ли сценарий
+        Scenario scenario = scenarioRepository.findByHubIdAndName(hubId, scenarioName)
+                .orElse(null);
 
         // Загружаем и валидируем датчики
         Map<String, Sensor> sensorsMap = loadAndValidateSensors(hubId, scenarioName, event);
 
-        // Обрабатываем условия и действия
-        processConditions(scenario, event.getConditions(), sensorsMap);
-        processActions(scenario, event.getActions(), sensorsMap);
+        if (scenario != null) {
+            // Сценарий существует - проверяем, изменились ли условия или действия
+            if (hasScenarioChanged(scenario, event, sensorsMap)) {
+                log.info("Scenario {} for hub {} has changed, updating", scenarioName, hubId);
 
-        // Сохраняем сценарий с заполненными связями
-        scenarioRepository.save(scenario);
+                // Очищаем старые условия и действия
+                scenario.getConditions().clear();
+                scenario.getActions().clear();
 
-        log.info("Added/Updated scenario: {} for hub: {}", scenarioName, hubId);
+                // Обновляем условия и действия
+                processConditions(scenario, event.getConditions(), sensorsMap);
+                processActions(scenario, event.getActions(), sensorsMap);
+
+                scenarioRepository.save(scenario);
+                log.info("Updated scenario: {} for hub: {}", scenarioName, hubId);
+            } else {
+                log.debug("Scenario {} for hub {} unchanged, skipping", scenarioName, hubId);
+            }
+        } else {
+            // Создаем новый сценарий
+            scenario = new Scenario();
+            scenario.setHubId(hubId);
+            scenario.setName(scenarioName);
+            scenario.setConditions(new ArrayList<>());
+            scenario.setActions(new ArrayList<>());
+
+            // Сохраняем сценарий, чтобы получить ID для composite keys
+            scenario = scenarioRepository.save(scenario);
+
+            // Обрабатываем условия и действия
+            processConditions(scenario, event.getConditions(), sensorsMap);
+            processActions(scenario, event.getActions(), sensorsMap);
+
+            scenarioRepository.save(scenario);
+            log.info("Added scenario: {} for hub: {}", scenarioName, hubId);
+        }
     }
 
     private void handleScenarioRemoved(String hubId, ScenarioRemovedEventAvro event) {
@@ -191,6 +210,77 @@ public class HubEventService {
 
             scenario.getActions().add(scenarioAction);
         }
+    }
+
+    private boolean hasScenarioChanged(Scenario scenario, ScenarioAddedEventAvro event, Map<String, Sensor> sensorsMap) {
+        // Проверяем количество условий и действий
+        if (scenario.getConditions().size() != event.getConditions().size() ||
+                scenario.getActions().size() != event.getActions().size()) {
+            return true;
+        }
+
+        // Проверяем условия
+        for (int i = 0; i < event.getConditions().size(); i++) {
+            ScenarioConditionAvro newCondition = event.getConditions().get(i);
+
+            // Ищем соответствующее существующее условие
+            boolean found = scenario.getConditions().stream()
+                    .anyMatch(sc -> matchesCondition(sc, newCondition));
+
+            if (!found) {
+                return true;
+            }
+        }
+
+        // Проверяем действия
+        for (int i = 0; i < event.getActions().size(); i++) {
+            DeviceActionAvro newAction = event.getActions().get(i);
+
+            // Ищем соответствующее существующее действие
+            boolean found = scenario.getActions().stream()
+                    .anyMatch(sa -> matchesAction(sa, newAction));
+
+            if (!found) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean matchesCondition(ScenarioCondition scenarioCondition, ScenarioConditionAvro conditionAvro) {
+        Condition condition = scenarioCondition.getCondition();
+
+        // Сравниваем тип, операцию и значение
+        boolean typeMatches = condition.getType().name().equals(conditionAvro.getType().name());
+        boolean operationMatches = condition.getOperation().name().equals(conditionAvro.getOperation().name());
+        boolean sensorMatches = scenarioCondition.getSensor().getId().equals(conditionAvro.getSensorId());
+
+        // Сравниваем значение
+        Object newValue = conditionAvro.getValue();
+        int expectedValue;
+        if (newValue instanceof Integer intValue) {
+            expectedValue = intValue;
+        } else if (newValue instanceof Boolean boolValue) {
+            expectedValue = boolValue ? 1 : 0;
+        } else {
+            return false;
+        }
+
+        boolean valueMatches = condition.getValue() == expectedValue;
+
+        return typeMatches && operationMatches && sensorMatches && valueMatches;
+    }
+
+    private boolean matchesAction(ScenarioAction scenarioAction, DeviceActionAvro actionAvro) {
+        Action action = scenarioAction.getAction();
+
+        // Сравниваем тип, значение и датчик
+        boolean typeMatches = action.getType().name().equals(actionAvro.getType().name());
+        boolean valueMatches = action.getValue() == actionAvro.getValue();
+        boolean sensorMatches = scenarioAction.getSensor().getId().equals(actionAvro.getSensorId());
+
+        return typeMatches && valueMatches && sensorMatches;
     }
 
     private Map<String, Sensor> loadAndValidateSensors(String hubId, String scenarioName, ScenarioAddedEventAvro event) {
