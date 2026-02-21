@@ -1,4 +1,4 @@
-package ru.yandex.practicum.telemetry.collector.configuration.serialization;
+package ru.yandex.practicum.kafka.telemetry.serialization;
 
 import org.apache.avro.specific.SpecificRecordBase;
 import org.apache.kafka.common.errors.SerializationException;
@@ -7,6 +7,9 @@ import org.apache.kafka.common.serialization.Serializer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
+/**
+ * Универсальный сериализатор для Avro-сообщений.
+ */
 public class AvroSerializer<T extends SpecificRecordBase> implements Serializer<T> {
 
     @Override

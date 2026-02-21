@@ -1,0 +1,32 @@
+grpc:
+  server:
+    port: 59091
+
+server:
+  port: 8080
+
+spring:
+  kafka:
+    producer:
+      bootstrap-servers: localhost:9092
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: ru.yandex.practicum.kafka.telemetry.serialization.AvroSerializer
+      acks: all
+      retries: 3
+
+collector:
+  kafka:
+    topics:
+      sensors-events: telemetry.sensors.v1
+      hubs-events: telemetry.hubs.v1
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/
+
+logging:
+  level:
+    ru.yandex.practicum: INFO
+    org.springframework.kafka: INFO
+    org.apache.kafka: WARN
