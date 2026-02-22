@@ -9,7 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.commerce.dto.ProductCategory;
 import ru.yandex.practicum.commerce.dto.ProductDto;
 import ru.yandex.practicum.commerce.dto.ProductState;
-import ru.yandex.practicum.commerce.dto.SetProductQuantityStateRequest;
+import ru.yandex.practicum.commerce.dto.QuantityState;
 import ru.yandex.practicum.commerce.exception.ProductNotFoundException;
 import ru.yandex.practicum.commerce.store.mapper.ProductMapper;
 import ru.yandex.practicum.commerce.store.model.Product;
@@ -81,11 +81,11 @@ public class ShoppingStoreService {
     }
 
     @Transactional
-    public boolean setProductQuantityState(SetProductQuantityStateRequest request) {
-        log.info("Установка состояния количества для товара id={}: {}", request.getProductId(), request.getQuantityState());
-        Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new ProductNotFoundException("Товар с id=" + request.getProductId() + " не найден"));
-        product.setQuantityState(request.getQuantityState());
+    public boolean setProductQuantityState(UUID productId, QuantityState quantityState) {
+        log.info("Установка состояния количества для товара id={}: {}", productId, quantityState);
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ProductNotFoundException("Товар с id=" + productId + " не найден"));
+        product.setQuantityState(quantityState);
         productRepository.save(product);
         return true;
     }

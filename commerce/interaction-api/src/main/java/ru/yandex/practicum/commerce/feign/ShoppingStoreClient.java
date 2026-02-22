@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import ru.yandex.practicum.commerce.dto.ProductDto;
-import ru.yandex.practicum.commerce.dto.SetProductQuantityStateRequest;
+import ru.yandex.practicum.commerce.dto.QuantityState;
 
 import java.util.List;
 import java.util.UUID;
@@ -35,5 +35,6 @@ public interface ShoppingStoreClient {
     boolean removeProductFromStore(@RequestBody UUID productId);
 
     @PostMapping("/api/v1/shopping-store/quantityState")
-    boolean setProductQuantityState(@RequestBody SetProductQuantityStateRequest request);
+    boolean setProductQuantityState(@RequestParam UUID productId,
+                                    @RequestParam QuantityState quantityState);
 }
