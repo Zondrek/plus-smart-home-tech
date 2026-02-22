@@ -1,3 +1,5 @@
+CREATE SCHEMA IF NOT EXISTS cart;
+
 CREATE TABLE IF NOT EXISTS shopping_carts (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     username VARCHAR(255) NOT NULL,

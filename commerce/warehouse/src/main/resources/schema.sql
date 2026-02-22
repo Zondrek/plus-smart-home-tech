@@ -1,3 +1,5 @@
+CREATE SCHEMA IF NOT EXISTS warehouse;
+
 CREATE TABLE IF NOT EXISTS warehouse_products (
     product_id UUID PRIMARY KEY,
     fragile BOOLEAN NOT NULL DEFAULT FALSE,

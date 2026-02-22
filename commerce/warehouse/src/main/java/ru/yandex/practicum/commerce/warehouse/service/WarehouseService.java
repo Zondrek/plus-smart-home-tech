@@ -9,7 +9,6 @@ import ru.yandex.practicum.commerce.dto.AddressDto;
 import ru.yandex.practicum.commerce.dto.BookedProductsDto;
 import ru.yandex.practicum.commerce.dto.NewProductInWarehouseRequest;
 import ru.yandex.practicum.commerce.dto.QuantityState;
-import ru.yandex.practicum.commerce.dto.SetProductQuantityStateRequest;
 import ru.yandex.practicum.commerce.dto.ShoppingCartDto;
 import ru.yandex.practicum.commerce.exception.NoSpecifiedProductInWarehouseException;
 import ru.yandex.practicum.commerce.exception.ProductInShoppingCartLowQuantityInWarehouse;
@@ -71,12 +70,12 @@ public class WarehouseService {
 
         QuantityState newState = calculateQuantityState(product.getQuantity());
         log.info("Новое количество товара id={}: {}, состояние: {}", request.getProductId(), product.getQuantity(), newState);
-        shoppingStoreClient.setProductQuantityState(
-                SetProductQuantityStateRequest.builder()
-                        .productId(request.getProductId())
-                        .quantityState(newState)
-                        .build()
-        );
+        try {
+            shoppingStoreClient.setProductQuantityState(request.getProductId(), newState);
+        } catch (Exception e) {
+            log.warn("Не удалось обновить quantityState товара id={} в витрине: {}",
+                    request.getProductId(), e.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)
