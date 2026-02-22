@@ -15,7 +15,6 @@ spring:
       ddl-auto: none
     properties:
       hibernate:
-        default_schema: cart
         format_sql: true
     show-sql: true
   sql:
