@@ -79,7 +79,6 @@ public class WarehouseService {
         } catch (FeignException e) {
             log.error("Не удалось обновить quantityState товара id={} в витрине: {}",
                     request.getProductId(), e.getMessage());
-            throw e;
         }
     }
 
