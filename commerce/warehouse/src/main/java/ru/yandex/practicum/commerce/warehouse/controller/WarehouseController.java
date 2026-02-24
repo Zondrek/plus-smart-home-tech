@@ -29,7 +29,7 @@ public class WarehouseController implements WarehouseClient {
     }
 
     @Override
-    public BookedProductsDto checkProductQuantityEnoughForShoppingCart(@RequestBody ShoppingCartDto shoppingCart) {
+    public BookedProductsDto checkProductQuantityEnoughForShoppingCart(@Valid @RequestBody ShoppingCartDto shoppingCart) {
         return warehouseService.checkProductQuantityEnoughForShoppingCart(shoppingCart);
     }
 
