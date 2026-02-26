@@ -44,7 +44,6 @@ public class ShoppingStoreService {
     public ProductDto createNewProduct(ProductDto productDto) {
         log.info("Создание нового товара: {}", productDto.getProductName());
         Product product = productMapper.toEntity(productDto);
-        product.setId(null);
         Product saved = productRepository.save(product);
         log.info("Товар создан с id={}", saved.getId());
         return productMapper.toDto(saved);
@@ -56,13 +55,27 @@ public class ShoppingStoreService {
         Product existing = productRepository.findById(productDto.getProductId())
                 .orElseThrow(() -> new ProductNotFoundException("Товар с id=" + productDto.getProductId() + " не найден"));
 
-        existing.setProductName(productDto.getProductName());
-        existing.setDescription(productDto.getDescription());
-        existing.setImageSrc(productDto.getImageSrc());
-        existing.setQuantityState(productDto.getQuantityState());
-        existing.setProductState(productDto.getProductState());
-        existing.setProductCategory(productDto.getProductCategory());
-        existing.setPrice(productDto.getPrice());
+        if (productDto.getProductName() != null) {
+            existing.setProductName(productDto.getProductName());
+        }
+        if (productDto.getDescription() != null) {
+            existing.setDescription(productDto.getDescription());
+        }
+        if (productDto.getImageSrc() != null) {
+            existing.setImageSrc(productDto.getImageSrc());
+        }
+        if (productDto.getQuantityState() != null) {
+            existing.setQuantityState(productDto.getQuantityState());
+        }
+        if (productDto.getProductState() != null) {
+            existing.setProductState(productDto.getProductState());
+        }
+        if (productDto.getProductCategory() != null) {
+            existing.setProductCategory(productDto.getProductCategory());
+        }
+        if (productDto.getPrice() != null) {
+            existing.setPrice(productDto.getPrice());
+        }
 
         Product saved = productRepository.save(existing);
         log.info("Товар с id={} обновлён", saved.getId());

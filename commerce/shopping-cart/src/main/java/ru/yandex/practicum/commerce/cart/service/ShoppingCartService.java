@@ -4,12 +4,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.yandex.practicum.commerce.cart.mapper.ShoppingCartMapper;
 import ru.yandex.practicum.commerce.cart.model.ShoppingCart;
 import ru.yandex.practicum.commerce.cart.repository.ShoppingCartRepository;
 import ru.yandex.practicum.commerce.dto.ChangeProductQuantityRequest;
 import ru.yandex.practicum.commerce.dto.ShoppingCartDto;
 import ru.yandex.practicum.commerce.exception.NoProductsInShoppingCartException;
-import ru.yandex.practicum.commerce.exception.NotAuthorizedUserException;
+import ru.yandex.practicum.commerce.feign.WarehouseClient;
 
 import java.util.List;
 import java.util.Map;
@@ -21,30 +22,33 @@ import java.util.UUID;
 public class ShoppingCartService {
 
     private final ShoppingCartRepository shoppingCartRepository;
+    private final ShoppingCartMapper shoppingCartMapper;
+    private final WarehouseClient warehouseClient;
 
     @Transactional
     public ShoppingCartDto getShoppingCart(String username) {
         log.info("Получение корзины для пользователя: {}", username);
-        validateUsername(username);
         ShoppingCart cart = getOrCreateActiveCart(username);
-        return toDto(cart);
+        return shoppingCartMapper.toDto(cart);
     }
 
     @Transactional
     public ShoppingCartDto addProductToShoppingCart(String username, Map<UUID, Long> products) {
         log.info("Добавление {} товар(ов) в корзину пользователя: {}", products.size(), username);
-        validateUsername(username);
         ShoppingCart cart = getOrCreateActiveCart(username);
         products.forEach((productId, quantity) ->
                 cart.getProducts().merge(productId, quantity, Long::sum));
+
+        ShoppingCartDto cartDto = shoppingCartMapper.toDto(cart);
+        warehouseClient.checkProductQuantityEnoughForShoppingCart(cartDto);
+
         shoppingCartRepository.save(cart);
-        return toDto(cart);
+        return cartDto;
     }
 
     @Transactional
     public void deactivateCurrentShoppingCart(String username) {
         log.info("Деактивация корзины для пользователя: {}", username);
-        validateUsername(username);
         shoppingCartRepository.findByUsernameAndActiveTrue(username)
                 .ifPresent(cart -> {
                     cart.setActive(false);
@@ -56,7 +60,6 @@ public class ShoppingCartService {
     @Transactional
     public ShoppingCartDto removeFromShoppingCart(String username, List<UUID> productIds) {
         log.info("Удаление {} товар(ов) из корзины пользователя: {}", productIds.size(), username);
-        validateUsername(username);
         ShoppingCart cart = getOrCreateActiveCart(username);
 
         boolean anyFound = productIds.stream()
@@ -67,13 +70,12 @@ public class ShoppingCartService {
 
         productIds.forEach(id -> cart.getProducts().remove(id));
         shoppingCartRepository.save(cart);
-        return toDto(cart);
+        return shoppingCartMapper.toDto(cart);
     }
 
     @Transactional
     public ShoppingCartDto changeProductQuantity(String username, ChangeProductQuantityRequest request) {
         log.info("Изменение количества товара id={} для пользователя: {}", request.getProductId(), username);
-        validateUsername(username);
         ShoppingCart cart = getOrCreateActiveCart(username);
 
         if (!cart.getProducts().containsKey(request.getProductId())) {
@@ -81,8 +83,12 @@ public class ShoppingCartService {
         }
 
         cart.getProducts().put(request.getProductId(), request.getNewQuantity());
+
+        ShoppingCartDto cartDto = shoppingCartMapper.toDto(cart);
+        warehouseClient.checkProductQuantityEnoughForShoppingCart(cartDto);
+
         shoppingCartRepository.save(cart);
-        return toDto(cart);
+        return cartDto;
     }
 
     private ShoppingCart getOrCreateActiveCart(String username) {
@@ -95,18 +101,5 @@ public class ShoppingCartService {
                             .build();
                     return shoppingCartRepository.save(newCart);
                 });
-    }
-
-    private void validateUsername(String username) {
-        if (username == null || username.isBlank()) {
-            throw new NotAuthorizedUserException("Имя пользователя не должно быть пустым");
-        }
-    }
-
-    private ShoppingCartDto toDto(ShoppingCart cart) {
-        return ShoppingCartDto.builder()
-                .shoppingCartId(cart.getId())
-                .products(cart.getProducts())
-                .build();
     }
 }

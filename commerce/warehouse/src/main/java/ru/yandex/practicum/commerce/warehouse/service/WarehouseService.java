@@ -1,5 +1,6 @@
 package ru.yandex.practicum.commerce.warehouse.service;
 
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,8 +18,11 @@ import ru.yandex.practicum.commerce.feign.ShoppingStoreClient;
 import ru.yandex.practicum.commerce.warehouse.model.WarehouseProduct;
 import ru.yandex.practicum.commerce.warehouse.repository.WarehouseProductRepository;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -72,8 +76,8 @@ public class WarehouseService {
         log.info("Новое количество товара id={}: {}, состояние: {}", request.getProductId(), product.getQuantity(), newState);
         try {
             shoppingStoreClient.setProductQuantityState(request.getProductId(), newState);
-        } catch (Exception e) {
-            log.warn("Не удалось обновить quantityState товара id={} в витрине: {}",
+        } catch (FeignException e) {
+            log.error("Не удалось обновить quantityState товара id={} в витрине: {}",
                     request.getProductId(), e.getMessage());
         }
     }
@@ -81,6 +85,12 @@ public class WarehouseService {
     @Transactional(readOnly = true)
     public BookedProductsDto checkProductQuantityEnoughForShoppingCart(ShoppingCartDto shoppingCart) {
         log.info("Проверка наличия товаров для корзины id={}", shoppingCart.getShoppingCartId());
+
+        List<UUID> productIds = List.copyOf(shoppingCart.getProducts().keySet());
+        Map<UUID, WarehouseProduct> productsMap = warehouseProductRepository.findAllById(productIds)
+                .stream()
+                .collect(Collectors.toMap(WarehouseProduct::getProductId, Function.identity()));
+
         double totalWeight = 0;
         double totalVolume = 0;
         boolean fragile = false;
@@ -89,9 +99,11 @@ public class WarehouseService {
             UUID productId = entry.getKey();
             long requestedQuantity = entry.getValue();
 
-            WarehouseProduct product = warehouseProductRepository.findById(productId)
-                    .orElseThrow(() -> new NoSpecifiedProductInWarehouseException(
-                            "Товар с id=" + productId + " не найден на складе"));
+            WarehouseProduct product = productsMap.get(productId);
+            if (product == null) {
+                throw new NoSpecifiedProductInWarehouseException(
+                        "Товар с id=" + productId + " не найден на складе");
+            }
 
             if (product.getQuantity() < requestedQuantity) {
                 throw new ProductInShoppingCartLowQuantityInWarehouse(
