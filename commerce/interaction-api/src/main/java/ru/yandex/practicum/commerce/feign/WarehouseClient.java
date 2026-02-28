@@ -8,9 +8,14 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import ru.yandex.practicum.commerce.dto.AddProductToWarehouseRequest;
 import ru.yandex.practicum.commerce.dto.AddressDto;
+import ru.yandex.practicum.commerce.dto.AssemblyProductsForOrderRequest;
 import ru.yandex.practicum.commerce.dto.BookedProductsDto;
 import ru.yandex.practicum.commerce.dto.NewProductInWarehouseRequest;
+import ru.yandex.practicum.commerce.dto.ShippedToDeliveryRequest;
 import ru.yandex.practicum.commerce.dto.ShoppingCartDto;
+
+import java.util.Map;
+import java.util.UUID;
 
 @FeignClient(name = "warehouse")
 public interface WarehouseClient {
@@ -26,4 +31,13 @@ public interface WarehouseClient {
 
     @GetMapping("/api/v1/warehouse/address")
     AddressDto getWarehouseAddress();
+
+    @PostMapping("/api/v1/warehouse/assembly")
+    BookedProductsDto assemblyProductsForOrder(@RequestBody @Valid AssemblyProductsForOrderRequest request);
+
+    @PostMapping("/api/v1/warehouse/shipped")
+    void shippedToDelivery(@RequestBody @Valid ShippedToDeliveryRequest request);
+
+    @PostMapping("/api/v1/warehouse/return")
+    void acceptReturn(@RequestBody Map<UUID, Long> products);
 }

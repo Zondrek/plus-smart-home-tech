@@ -7,15 +7,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.yandex.practicum.commerce.dto.AddProductToWarehouseRequest;
 import ru.yandex.practicum.commerce.dto.AddressDto;
+import ru.yandex.practicum.commerce.dto.AssemblyProductsForOrderRequest;
 import ru.yandex.practicum.commerce.dto.BookedProductsDto;
 import ru.yandex.practicum.commerce.dto.NewProductInWarehouseRequest;
 import ru.yandex.practicum.commerce.dto.QuantityState;
+import ru.yandex.practicum.commerce.dto.ShippedToDeliveryRequest;
 import ru.yandex.practicum.commerce.dto.ShoppingCartDto;
 import ru.yandex.practicum.commerce.exception.NoSpecifiedProductInWarehouseException;
 import ru.yandex.practicum.commerce.exception.ProductInShoppingCartLowQuantityInWarehouse;
 import ru.yandex.practicum.commerce.exception.SpecifiedProductAlreadyInWarehouseException;
 import ru.yandex.practicum.commerce.feign.ShoppingStoreClient;
+import ru.yandex.practicum.commerce.warehouse.model.OrderBooking;
 import ru.yandex.practicum.commerce.warehouse.model.WarehouseProduct;
+import ru.yandex.practicum.commerce.warehouse.repository.OrderBookingRepository;
 import ru.yandex.practicum.commerce.warehouse.repository.WarehouseProductRepository;
 
 import java.util.List;
@@ -30,6 +34,7 @@ import java.util.stream.Collectors;
 public class WarehouseService {
 
     private final WarehouseProductRepository warehouseProductRepository;
+    private final OrderBookingRepository orderBookingRepository;
     private final ShoppingStoreClient shoppingStoreClient;
 
     private static final AddressDto WAREHOUSE_ADDRESS = AddressDto.builder()
@@ -85,8 +90,93 @@ public class WarehouseService {
     @Transactional(readOnly = true)
     public BookedProductsDto checkProductQuantityEnoughForShoppingCart(ShoppingCartDto shoppingCart) {
         log.info("Проверка наличия товаров для корзины id={}", shoppingCart.getShoppingCartId());
+        BookedProductsDto result = calculateBookingCharacteristics(shoppingCart.getProducts());
+        log.info("Бронирование: вес={}, объём={}, хрупкое={}",
+                result.getDeliveryWeight(), result.getDeliveryVolume(), result.isFragile());
+        return result;
+    }
 
-        List<UUID> productIds = List.copyOf(shoppingCart.getProducts().keySet());
+    public AddressDto getWarehouseAddress() {
+        log.info("Запрос адреса склада");
+        return WAREHOUSE_ADDRESS;
+    }
+
+    @Transactional
+    public BookedProductsDto assemblyProductsForOrder(AssemblyProductsForOrderRequest request) {
+        log.info("Сборка товаров для заказа id={}", request.getOrderId());
+
+        Map<UUID, Long> requestedProducts = request.getProducts();
+        BookedProductsDto result = calculateBookingCharacteristics(requestedProducts);
+
+        Map<UUID, WarehouseProduct> productsMap = warehouseProductRepository
+                .findAllById(List.copyOf(requestedProducts.keySet()))
+                .stream()
+                .collect(Collectors.toMap(WarehouseProduct::getProductId, Function.identity()));
+
+        for (Map.Entry<UUID, Long> entry : requestedProducts.entrySet()) {
+            UUID productId = entry.getKey();
+            long quantity = entry.getValue();
+            WarehouseProduct product = productsMap.get(productId);
+
+            product.setQuantity(product.getQuantity() - quantity);
+            warehouseProductRepository.save(product);
+
+            QuantityState newState = calculateQuantityState(product.getQuantity());
+            try {
+                shoppingStoreClient.setProductQuantityState(productId, newState);
+            } catch (FeignException e) {
+                log.error("Не удалось обновить quantityState товара id={}: {}", productId, e.getMessage());
+            }
+        }
+
+        OrderBooking booking = OrderBooking.builder()
+                .orderId(request.getOrderId())
+                .products(new java.util.HashMap<>(requestedProducts))
+                .build();
+        orderBookingRepository.save(booking);
+
+        log.info("Сборка заказа id={} завершена: вес={}, объём={}, хрупкое={}",
+                request.getOrderId(), result.getDeliveryWeight(), result.getDeliveryVolume(), result.isFragile());
+        return result;
+    }
+
+    @Transactional
+    public void shippedToDelivery(ShippedToDeliveryRequest request) {
+        log.info("Передача заказа id={} в доставку, deliveryId={}", request.getOrderId(), request.getDeliveryId());
+        OrderBooking booking = orderBookingRepository.findById(request.getOrderId())
+                .orElseThrow(() -> new NoSpecifiedProductInWarehouseException(
+                        "Бронирование для заказа id=" + request.getOrderId() + " не найдено"));
+        booking.setDeliveryId(request.getDeliveryId());
+        orderBookingRepository.save(booking);
+        log.info("DeliveryId установлен для заказа id={}", request.getOrderId());
+    }
+
+    @Transactional
+    public void acceptReturn(Map<UUID, Long> products) {
+        log.info("Возврат товаров на склад, количество позиций: {}", products.size());
+        for (Map.Entry<UUID, Long> entry : products.entrySet()) {
+            UUID productId = entry.getKey();
+            long quantity = entry.getValue();
+
+            WarehouseProduct product = warehouseProductRepository.findById(productId)
+                    .orElseThrow(() -> new NoSpecifiedProductInWarehouseException(
+                            "Товар с id=" + productId + " не найден на складе"));
+
+            product.setQuantity(product.getQuantity() + quantity);
+            warehouseProductRepository.save(product);
+
+            QuantityState newState = calculateQuantityState(product.getQuantity());
+            try {
+                shoppingStoreClient.setProductQuantityState(productId, newState);
+            } catch (FeignException e) {
+                log.error("Не удалось обновить quantityState товара id={}: {}", productId, e.getMessage());
+            }
+        }
+        log.info("Возврат товаров на склад завершён");
+    }
+
+    private BookedProductsDto calculateBookingCharacteristics(Map<UUID, Long> products) {
+        List<UUID> productIds = List.copyOf(products.keySet());
         Map<UUID, WarehouseProduct> productsMap = warehouseProductRepository.findAllById(productIds)
                 .stream()
                 .collect(Collectors.toMap(WarehouseProduct::getProductId, Function.identity()));
@@ -95,7 +185,7 @@ public class WarehouseService {
         double totalVolume = 0;
         boolean fragile = false;
 
-        for (Map.Entry<UUID, Long> entry : shoppingCart.getProducts().entrySet()) {
+        for (Map.Entry<UUID, Long> entry : products.entrySet()) {
             UUID productId = entry.getKey();
             long requestedQuantity = entry.getValue();
 
@@ -117,17 +207,11 @@ public class WarehouseService {
             }
         }
 
-        log.info("Бронирование: вес={}, объём={}, хрупкое={}", totalWeight, totalVolume, fragile);
         return BookedProductsDto.builder()
                 .deliveryWeight(totalWeight)
                 .deliveryVolume(totalVolume)
                 .fragile(fragile)
                 .build();
-    }
-
-    public AddressDto getWarehouseAddress() {
-        log.info("Запрос адреса склада");
-        return WAREHOUSE_ADDRESS;
     }
 
     private QuantityState calculateQuantityState(long quantity) {

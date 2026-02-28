@@ -25,6 +25,9 @@ public interface ShoppingStoreClient {
     @GetMapping("/api/v1/shopping-store/{productId}")
     ProductDto getProduct(@PathVariable UUID productId);
 
+    @PostMapping("/api/v1/shopping-store/products")
+    List<ProductDto> getProductsByIds(@RequestBody List<UUID> productIds);
+
     @PutMapping("/api/v1/shopping-store")
     ProductDto createNewProduct(@RequestBody ProductDto productDto);
 

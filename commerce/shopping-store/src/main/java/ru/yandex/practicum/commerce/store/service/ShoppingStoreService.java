@@ -15,7 +15,9 @@ import ru.yandex.practicum.commerce.store.mapper.ProductMapper;
 import ru.yandex.practicum.commerce.store.model.Product;
 import ru.yandex.practicum.commerce.store.repository.ProductRepository;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -38,6 +40,15 @@ public class ShoppingStoreService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ProductNotFoundException("Товар с id=" + productId + " не найден"));
         return productMapper.toDto(product);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductDto> getProductsByIds(List<UUID> productIds) {
+        log.info("Получение товаров по списку id, количество: {}", productIds.size());
+        return productRepository.findAllById(productIds)
+                .stream()
+                .map(productMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     @Transactional
