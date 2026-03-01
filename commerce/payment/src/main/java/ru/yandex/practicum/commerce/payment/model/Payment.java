@@ -15,6 +15,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import ru.yandex.practicum.commerce.dto.PaymentState;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
@@ -35,16 +36,16 @@ public class Payment {
     private UUID orderId;
 
     @Column(name = "total_payment")
-    private double totalPayment;
+    private BigDecimal totalPayment;
 
     @Column(name = "delivery_total")
-    private double deliveryTotal;
+    private BigDecimal deliveryTotal;
 
     @Column(name = "fee_total")
-    private double feeTotal;
+    private BigDecimal feeTotal;
 
     @Column(name = "product_total")
-    private double productTotal;
+    private BigDecimal productTotal;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

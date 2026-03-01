@@ -15,6 +15,7 @@ import ru.yandex.practicum.commerce.exception.NoDeliveryFoundException;
 import ru.yandex.practicum.commerce.feign.OrderClient;
 import ru.yandex.practicum.commerce.feign.WarehouseClient;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Slf4j
@@ -27,8 +28,7 @@ public class DeliveryService {
     private final OrderClient orderClient;
     private final WarehouseClient warehouseClient;
 
-    private static final double BASE_COST = 5.0;
-    private static final String ADDRESS_1 = "ADDRESS_1";
+    private static final BigDecimal BASE_COST = BigDecimal.valueOf(5.0);
     private static final String ADDRESS_2 = "ADDRESS_2";
 
     @Transactional
@@ -42,39 +42,35 @@ public class DeliveryService {
     }
 
     @Transactional(readOnly = true)
-    public Double deliveryCost(OrderDto orderDto) {
+    public BigDecimal deliveryCost(OrderDto orderDto) {
         log.info("Расчёт стоимости доставки для заказа id={}", orderDto.getOrderId());
         Delivery delivery = deliveryRepository.findById(orderDto.getDeliveryId())
                 .orElseThrow(() -> new NoDeliveryFoundException(
                         "Доставка с id=" + orderDto.getDeliveryId() + " не найдена"));
 
-        double cost = BASE_COST;
+        BigDecimal cost = BASE_COST;
 
         // Множитель адреса + сложение с базовой стоимостью
         String fromStreet = delivery.getFromStreet();
-        if (ADDRESS_1.equals(fromStreet)) {
-            cost *= 1.0;
-        } else if (ADDRESS_2.equals(fromStreet)) {
-            cost *= 2.0;
-        } else {
-            cost *= 3.0;
+        if (ADDRESS_2.equals(fromStreet)) {
+            cost = cost.multiply(BigDecimal.valueOf(2));
         }
-        cost += BASE_COST;
+        cost = cost.add(BASE_COST);
 
         // Хрупкость
         if (orderDto.isFragile()) {
-            cost += cost * 0.2;
+            cost = cost.add(cost.multiply(BigDecimal.valueOf(0.2)));
         }
 
         // Вес
-        cost += orderDto.getDeliveryWeight() * 0.3;
+        cost = cost.add(BigDecimal.valueOf(orderDto.getDeliveryWeight()).multiply(BigDecimal.valueOf(0.3)));
 
         // Объём
-        cost += orderDto.getDeliveryVolume() * 0.2;
+        cost = cost.add(BigDecimal.valueOf(orderDto.getDeliveryVolume()).multiply(BigDecimal.valueOf(0.2)));
 
         // Несовпадение улиц (наценка)
         if (delivery.getFromStreet() == null || !delivery.getFromStreet().equals(delivery.getToStreet())) {
-            cost += cost * 0.2;
+            cost = cost.add(cost.multiply(BigDecimal.valueOf(0.2)));
         }
 
         log.info("Стоимость доставки для заказа id={}: {}", orderDto.getOrderId(), cost);

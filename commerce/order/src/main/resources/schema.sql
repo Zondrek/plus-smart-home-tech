@@ -10,9 +10,9 @@ CREATE TABLE IF NOT EXISTS orders (
     delivery_weight DOUBLE PRECISION DEFAULT 0,
     delivery_volume DOUBLE PRECISION DEFAULT 0,
     fragile BOOLEAN DEFAULT FALSE,
-    total_price DOUBLE PRECISION DEFAULT 0,
-    delivery_price DOUBLE PRECISION DEFAULT 0,
-    product_price DOUBLE PRECISION DEFAULT 0
+    total_price NUMERIC DEFAULT 0,
+    delivery_price NUMERIC DEFAULT 0,
+    product_price NUMERIC DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS order_products (

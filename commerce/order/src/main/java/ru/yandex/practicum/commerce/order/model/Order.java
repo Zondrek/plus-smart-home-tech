@@ -19,6 +19,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import ru.yandex.practicum.commerce.dto.OrderState;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -63,13 +64,13 @@ public class Order {
     private boolean fragile;
 
     @Column(name = "total_price")
-    private double totalPrice;
+    private BigDecimal totalPrice;
 
     @Column(name = "delivery_price")
-    private double deliveryPrice;
+    private BigDecimal deliveryPrice;
 
     @Column(name = "product_price")
-    private double productPrice;
+    private BigDecimal productPrice;
 
     @ElementCollection
     @CollectionTable(name = "order_products", joinColumns = @JoinColumn(name = "order_id"))

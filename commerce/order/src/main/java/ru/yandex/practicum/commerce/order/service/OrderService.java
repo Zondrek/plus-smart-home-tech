@@ -20,6 +20,7 @@ import ru.yandex.practicum.commerce.order.mapper.OrderMapper;
 import ru.yandex.practicum.commerce.order.model.Order;
 import ru.yandex.practicum.commerce.order.repository.OrderRepository;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
@@ -56,6 +57,8 @@ public class OrderService {
                 .build();
 
         Order saved = orderRepository.save(order);
+
+        warehouseClient.checkProductQuantityEnoughForShoppingCart(request.getShoppingCart());
 
         DeliveryDto deliveryDto = deliveryClient.planDelivery(DeliveryDto.builder()
                 .fromAddress(warehouseClient.getWarehouseAddress())
@@ -142,7 +145,13 @@ public class OrderService {
         log.info("Расчёт полной стоимости заказа id={}", orderId);
         Order order = findOrderById(orderId);
         OrderDto orderDto = orderMapper.toDto(order);
-        Double totalCost = paymentClient.getTotalCost(orderDto);
+
+        BigDecimal productCost = paymentClient.productCost(orderDto);
+        order.setProductPrice(productCost);
+        orderRepository.save(order);
+
+        orderDto = orderMapper.toDto(order);
+        BigDecimal totalCost = paymentClient.getTotalCost(orderDto);
         order.setTotalPrice(totalCost);
         orderRepository.save(order);
         log.info("Полная стоимость заказа id={}: {}", orderId, totalCost);
@@ -154,7 +163,7 @@ public class OrderService {
         log.info("Расчёт стоимости доставки заказа id={}", orderId);
         Order order = findOrderById(orderId);
         OrderDto orderDto = orderMapper.toDto(order);
-        Double deliveryCost = deliveryClient.deliveryCost(orderDto);
+        BigDecimal deliveryCost = deliveryClient.deliveryCost(orderDto);
         order.setDeliveryPrice(deliveryCost);
         orderRepository.save(order);
         log.info("Стоимость доставки заказа id={}: {}", orderId, deliveryCost);

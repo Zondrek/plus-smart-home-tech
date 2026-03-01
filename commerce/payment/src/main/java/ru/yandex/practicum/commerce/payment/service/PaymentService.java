@@ -15,6 +15,7 @@ import ru.yandex.practicum.commerce.payment.mapper.PaymentMapper;
 import ru.yandex.practicum.commerce.payment.model.Payment;
 import ru.yandex.practicum.commerce.payment.repository.PaymentRepository;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -31,31 +32,33 @@ public class PaymentService {
     private final ShoppingStoreClient shoppingStoreClient;
     private final OrderClient orderClient;
 
-    private static final double VAT_RATE = 0.1;
+    private static final BigDecimal VAT_RATE = BigDecimal.valueOf(0.1);
 
-    public Double productCost(OrderDto orderDto) {
+    public BigDecimal productCost(OrderDto orderDto) {
         log.info("Расчёт стоимости товаров для заказа id={}", orderDto.getOrderId());
         List<UUID> productIds = List.copyOf(orderDto.getProducts().keySet());
         Map<UUID, ProductDto> productsMap = shoppingStoreClient.getProductsByIds(productIds)
                 .stream()
                 .collect(Collectors.toMap(ProductDto::getProductId, Function.identity()));
 
-        double totalProductCost = 0;
+        BigDecimal totalProductCost = BigDecimal.ZERO;
         for (Map.Entry<UUID, Long> entry : orderDto.getProducts().entrySet()) {
             ProductDto product = productsMap.get(entry.getKey());
             if (product != null) {
-                totalProductCost += product.getPrice() * entry.getValue();
+                totalProductCost = totalProductCost.add(
+                        BigDecimal.valueOf(product.getPrice()).multiply(BigDecimal.valueOf(entry.getValue()))
+                );
             }
         }
         log.info("Стоимость товаров для заказа id={}: {}", orderDto.getOrderId(), totalProductCost);
         return totalProductCost;
     }
 
-    public Double getTotalCost(OrderDto orderDto) {
+    public BigDecimal getTotalCost(OrderDto orderDto) {
         log.info("Расчёт полной стоимости для заказа id={}", orderDto.getOrderId());
-        double productPrice = orderDto.getProductPrice();
-        double fee = productPrice * VAT_RATE;
-        double total = productPrice + fee + orderDto.getDeliveryPrice();
+        BigDecimal productPrice = orderDto.getProductPrice();
+        BigDecimal fee = productPrice.multiply(VAT_RATE);
+        BigDecimal total = productPrice.add(fee).add(orderDto.getDeliveryPrice());
         log.info("Полная стоимость заказа id={}: {} (товары={}, НДС={}, доставка={})",
                 orderDto.getOrderId(), total, productPrice, fee, orderDto.getDeliveryPrice());
         return total;
@@ -64,10 +67,10 @@ public class PaymentService {
     @Transactional
     public PaymentDto payment(OrderDto orderDto) {
         log.info("Создание платежа для заказа id={}", orderDto.getOrderId());
-        double productTotal = orderDto.getProductPrice();
-        double feeTotal = productTotal * VAT_RATE;
-        double deliveryTotal = orderDto.getDeliveryPrice();
-        double totalPayment = productTotal + feeTotal + deliveryTotal;
+        BigDecimal productTotal = orderDto.getProductPrice();
+        BigDecimal feeTotal = productTotal.multiply(VAT_RATE);
+        BigDecimal deliveryTotal = orderDto.getDeliveryPrice();
+        BigDecimal totalPayment = productTotal.add(feeTotal).add(deliveryTotal);
 
         Payment payment = Payment.builder()
                 .orderId(orderDto.getOrderId())
@@ -89,9 +92,9 @@ public class PaymentService {
         log.info("Успешная оплата paymentId={}", paymentId);
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new NoPaymentFoundException("Платёж с id=" + paymentId + " не найден"));
+        orderClient.payment(payment.getOrderId());
         payment.setStatus(PaymentState.SUCCESS);
         paymentRepository.save(payment);
-        orderClient.payment(payment.getOrderId());
         log.info("Платёж id={} помечен как SUCCESS", paymentId);
     }
 
@@ -100,9 +103,9 @@ public class PaymentService {
         log.info("Ошибка оплаты paymentId={}", paymentId);
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new NoPaymentFoundException("Платёж с id=" + paymentId + " не найден"));
+        orderClient.paymentFailed(payment.getOrderId());
         payment.setStatus(PaymentState.FAILED);
         paymentRepository.save(payment);
-        orderClient.paymentFailed(payment.getOrderId());
         log.info("Платёж id={} помечен как FAILED", paymentId);
     }
 }
