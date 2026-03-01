@@ -19,6 +19,7 @@ import ru.yandex.practicum.commerce.dto.ProductDto;
 import ru.yandex.practicum.commerce.dto.QuantityState;
 import ru.yandex.practicum.commerce.store.service.ShoppingStoreService;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -37,6 +38,11 @@ public class ShoppingStoreController {
     @GetMapping("/{productId}")
     public ProductDto getProduct(@PathVariable UUID productId) {
         return shoppingStoreService.getProduct(productId);
+    }
+
+    @PostMapping("/products")
+    public List<ProductDto> getProductsByIds(@RequestBody List<UUID> productIds) {
+        return shoppingStoreService.getProductsByIds(productIds);
     }
 
     @PutMapping
